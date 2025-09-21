@@ -51,6 +51,7 @@ const Footer = () => {
               <button type="submit">Subscribe</button>
             </form>
           </div>
+          
         </div>
         
         <div className="footer-bottom">
