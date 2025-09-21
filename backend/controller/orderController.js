@@ -12,6 +12,31 @@ const getDbConnection = async () => {
     }
 };
 
+// Ensure the Cart table exists
+const ensureCartTable = async (db) => {
+    // First, check if the table exists
+    const tableExists = await db.get(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='Cart'"
+    );
+
+    if (!tableExists) {
+        // Create the table if it doesn't exist
+        await db.run(`
+            CREATE TABLE Cart (
+                id TEXT PRIMARY KEY,
+                customer_id TEXT NOT NULL,
+                product_id TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (customer_id) REFERENCES users(id),
+                FOREIGN KEY (product_id) REFERENCES products(id),
+                UNIQUE(customer_id, product_id)
+            )
+        `);
+        console.log('Created Cart table');
+    }
+};
+
 exports.addToCart = async (req, res) => {
     const { productId } = req.params;
     const { quantity = 1 } = req.body;
@@ -52,6 +77,9 @@ exports.addToCart = async (req, res) => {
             throw new Error('Failed to connect to database');
         }
         
+        // Ensure Cart table exists
+        await ensureCartTable(db);
+        
         // Start transaction
         await db.run('BEGIN TRANSACTION');
 
@@ -83,7 +111,7 @@ exports.addToCart = async (req, res) => {
 
                 // Update existing cart item
                 await db.run(
-                    'UPDATE Cart SET quantity = ?, updated_at = datetime("now") WHERE id = ?',
+                    'UPDATE Cart SET quantity = ? WHERE id = ?',
                     [newQuantity, cartItem.id]
                 );
             } else {
@@ -104,19 +132,33 @@ exports.addToCart = async (req, res) => {
             // Commit transaction
             await db.run('COMMIT');
 
-            // Get updated cart
+            // Get updated cart with product details
             const updatedCart = await db.all(
-                `SELECT c.id, c.product_id, p.name, p.price, c.quantity, p.image 
+                `SELECT 
+                    c.id, 
+                    c.product_id, 
+                    p.name, 
+                    p.price, 
+                    c.quantity, 
+                    p.image,
+                    (p.price * c.quantity) as item_total
                  FROM Cart c 
                  JOIN products p ON c.product_id = p.id 
                  WHERE c.customer_id = ?`,
                 [customer_id]
             );
 
+            // Calculate cart total
+            const cartTotal = updatedCart.reduce((total, item) => total + (item.price * item.quantity), 0);
+
             return res.status(200).json({
                 success: true,
                 message: 'Item added to cart successfully',
-                cart: updatedCart
+                cart: {
+                    items: updatedCart,
+                    total: cartTotal.toFixed(2),
+                    itemCount: updatedCart.reduce((count, item) => count + item.quantity, 0)
+                }
             });
 
         } catch (error) {
@@ -355,13 +397,8 @@ exports.getOrders = async (req, res) => {
         });
     }
     
-    let db;
     try {
-        db = await getDbConnection();
-        if (!db) {
-            throw new Error('Failed to connect to database');
-        }
-        
+        const db = require('../config/db');
         const customer_id = req.user.id;
         
         // First, get all orders for the customer
@@ -443,15 +480,6 @@ exports.getOrders = async (req, res) => {
             error: 'Failed to fetch orders',
             details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
-    } finally {
-        // Close the database connection if it exists
-        if (db) {
-            try {
-                await db.close();
-            } catch (closeError) {
-                console.error('Error closing database connection:', closeError);
-            }
-        }
     }
 };
 
