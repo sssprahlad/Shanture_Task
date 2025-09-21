@@ -3,7 +3,6 @@ const { promisify } = require('util');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
-// Initialize the database and create tables if they don't exist
 const initDb = async () => {
   try {
     const db = await getDb();

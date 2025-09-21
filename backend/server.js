@@ -5,8 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const app = express();
 
-// Import and initialize database models
-require('./models/Product'); // This will run the table creation code
+require('./models/Product'); 
 const db = require('./config/db');
 
 const corsOptions = {
@@ -16,7 +15,6 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"]
 };
 
-// Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -27,7 +25,6 @@ app.use(express.json());
 
 app.use('/uploads', express.static(uploadsDir));
 
-// Database connection check
 app.use((req, res, next) => {
   if (!db) {
     return res.status(500).json({ error: 'Database connection failed' });
@@ -35,13 +32,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Import routes
 const customerRoutes = require('./routes/customerRoutes');
 const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/ordersRouter');
 const cartRoutes = require('./routes/cartRouter');
-
-// Use routes
 app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);

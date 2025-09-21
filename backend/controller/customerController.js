@@ -150,7 +150,7 @@ exports.updateCustomerProfile = async (req, res) => {
             });
         }
 
-        // Update the customer in the database
+      
         const updatedCustomer = await Customer.updateCustomer(id, updateData);
         
         if (!updatedCustomer) {
@@ -160,7 +160,7 @@ exports.updateCustomerProfile = async (req, res) => {
             });
         }
 
-        // Generate new token if email or username was updated
+        
         let newToken;
         if (updateData.email || updateData.username) {
             const tokenData = {
@@ -171,7 +171,7 @@ exports.updateCustomerProfile = async (req, res) => {
             newToken = jwt.sign(tokenData, process.env.JWT_SECRET, { expiresIn: '1h' });
         }
 
-        // Prepare response
+        
         const response = {
             success: true,
             message: 'Profile updated successfully',

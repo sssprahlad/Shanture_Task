@@ -2,27 +2,21 @@ const { db } = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { promisify } = require('util');
 
-// Promisify db methods
+
 const dbRun = promisify(db.run.bind(db));
 const dbGet = promisify(db.get.bind(db));
 const dbAll = promisify(db.all.bind(db));
-
-// Drop and recreate tables to ensure they have the correct schema
 const recreateTables = async () => {
     try {
         console.log('Starting database table recreation...');
         
-        // Disable foreign key constraints temporarily
+     
         await dbRun('PRAGMA foreign_keys = OFF');
         
-        // Drop tables if they exist (in reverse order due to foreign key constraints)
         await dbRun('DROP TABLE IF EXISTS OrderItems');
         await dbRun('DROP TABLE IF EXISTS Orders');
         await dbRun('DROP TABLE IF EXISTS Cart');
         
-        // Re-enable foreign key constraints
-
-        // Recreate tables with correct schema
         await dbRun(`CREATE TABLE IF NOT EXISTS Cart (
             id TEXT PRIMARY KEY DEFAULT (uuidv4()),
             customer_id TEXT NOT NULL,
@@ -57,7 +51,7 @@ const recreateTables = async () => {
             FOREIGN KEY (product_id) REFERENCES products(id)
         )`);
 
-        // Verify tables were created
+       
         const tables = await dbAll("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Cart', 'Orders', 'OrderItems')");
         console.log('Database tables recreated successfully. Current tables:', tables);
     } catch (error) {
@@ -65,5 +59,4 @@ const recreateTables = async () => {
     }
 };
 
-// Call the function to recreate tables
 recreateTables();

@@ -1,66 +1,6 @@
-// import * as React from 'react';
-// import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-// import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-// import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-// import { Box, Typography } from '@mui/material';
-
-// const Dashboard = () => {
-//   const [startDate, setStartDate] = React.useState(null);
-//   const [endDate, setEndDate] = React.useState(null);
-
-//   return (
-//     <Box sx={{ p: 3, maxWidth: 1000, margin: '0 auto' }}>
-//       <Typography variant="h4" component="h1" gutterBottom>
-//         Dashboard
-//       </Typography>
-      
-//       <Box sx={{ 
-//         display: 'flex', 
-//         gap: 2, 
-//         flexWrap: 'wrap',
-//         marginTop: 3,
-//         '& .MuiTextField-root': {
-//           minWidth: 220,
-//         },
-//       }}>
-//         <LocalizationProvider dateAdapter={AdapterDayjs}>
-//           <DatePicker
-//             label="Start Date"
-//             value={startDate}
-//             onChange={(newValue) => setStartDate(newValue)}
-//             slotProps={{ textField: { fullWidth: true } }}
-//           />
-          
-//           <DatePicker
-//             label="End Date"
-//             value={endDate}
-//             onChange={(newValue) => setEndDate(newValue)}
-//             minDate={startDate}
-//             slotProps={{ textField: { fullWidth: true } }}
-//           />
-//         </LocalizationProvider>
-//       </Box>
-      
-//       <Box sx={{ mt: 4 }}>
-//         <Typography variant="h6" gutterBottom>
-//           Selected Date Range:
-//         </Typography>
-//         <Typography>
-//           {startDate ? startDate.format('MMMM D, YYYY') : 'Not selected'} 
-//           {' → '}
-//           {endDate ? endDate.format('MMMM D, YYYY') : 'Not selected'}
-//         </Typography>
-//       </Box>
-//     </Box>
-//   );
-// };
-
-// export default Dashboard;
-
-
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
-// Mock data for demonstration
 const mockData = {
   revenue: {
     totalRevenue: 847520,

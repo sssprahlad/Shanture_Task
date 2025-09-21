@@ -188,7 +188,7 @@ const Navbar = () => {
     <nav className="navbar">
       <div className="navbar-container">
         <Link to="/" className="navbar-logo" onClick={() => setIsOpen(false)}>
-          YourLogo
+          Shanture
         </Link>
         
         <div className="menu-icon" onClick={toggleMenu}>

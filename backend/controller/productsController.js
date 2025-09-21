@@ -1,15 +1,15 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 
-// Get all products
+
 exports.getProducts = async (req, res) => {
     try {
-        // Check if products table exists
+       
         try {
             await db.get("SELECT 1 FROM products LIMIT 1");
         } catch (tableError) {
             if (tableError.message.includes('no such table')) {
-                // Table doesn't exist, create it
+                
                 await db.run(`
                     CREATE TABLE IF NOT EXISTS products (
                         id TEXT PRIMARY KEY,
@@ -23,14 +23,13 @@ exports.getProducts = async (req, res) => {
                 `);
                 console.log('Created products table');
                 
-                // Insert sample data
                 await insertSampleProducts();
             } else {
                 throw tableError;
             }
         }
         
-        // Get all products
+    
         const products = await db.query("SELECT * FROM products ORDER BY name");
         
         return res.status(200).json({
@@ -50,7 +49,6 @@ exports.getProducts = async (req, res) => {
     }
 };
 
-// Insert sample products
 async function insertSampleProducts() {
     const sampleProducts = [
         {
