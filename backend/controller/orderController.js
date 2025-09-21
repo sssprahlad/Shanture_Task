@@ -84,8 +84,6 @@ exports.addToCart = async (req, res) => {
                 [cartItemId, customer_id, productId, quantity]
             );
         }
-
-        // Commit transaction
         await db.run('COMMIT');
 
         // Get updated cart
