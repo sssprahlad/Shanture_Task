@@ -69,6 +69,7 @@ if (isProduction) {
   app.get('*', (req, res) => {
     res.sendFile(path.resolve(__dirname, '../frontend/build', 'index.html'));
   });
+  
 }
 
 app.listen(PORT, '0.0.0.0', () => {
