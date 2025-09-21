@@ -7,7 +7,11 @@
     "start": "node backend/server.js",
     "server": "nodemon backend/server.js",
     "client": "npm start --prefix frontend",
-    "dev": "concurrently \"npm run server\" \"npm run client\""
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend && npm install",
+    "postinstall": "npm run install:backend && npm run install:frontend",
+    "heroku-postbuild": "cd frontend && npm install && npm run build"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +24,14 @@
     "sqlite3": "^5.1.7",
     "uuid": "^9.0.1"
   },
+  "engines": {
+    "node": ">=14.0.0",
+    "npm": ">=6.0.0"
+  },
+  "cacheDirectories": [
+    "node_modules",
+    "frontend/node_modules"
+  ],
   "devDependencies": {
     "concurrently": "^8.2.2",
     "nodemon": "^3.0.2"

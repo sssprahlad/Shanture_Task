@@ -8,8 +8,14 @@ const app = express();
 require('./models/Product'); 
 const db = require('./config/db');
 
+// Set CORS based on environment
+const isProduction = process.env.NODE_ENV === 'production';
+const allowedOrigins = isProduction 
+  ? [process.env.FRONTEND_URL, 'https://your-render-app-url.onrender.com'] 
+  : 'http://localhost:3000';
+
 const corsOptions = {
-  origin: "http://localhost:3000", 
+  origin: allowedOrigins,
   credentials: true,
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   allowedHeaders: ["Content-Type", "Authorization"]
@@ -45,7 +51,6 @@ app.get("/", (req, res) => {
   res.send("Backend server is running!");
 });
 
-
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ 
@@ -54,10 +59,18 @@ app.use((err, req, res, next) => {
   });
 });
 
-const port = process.env.PORT || 8080;
+const PORT = process.env.PORT || 10000;
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-  console.log(`API Documentation: http://localhost:${port}/api-docs`);
-  console.log(`Uploads directory: ${uploadsDir}`);
+// In production, serve static files from the React frontend app
+if (isProduction) {
+  // Set static folder
+  app.use(express.static(path.join(__dirname, '../frontend/build')));
+  
+  app.get('*', (req, res) => {
+    res.sendFile(path.resolve(__dirname, '../frontend/build', 'index.html'));
+  });
+}
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running in ${isProduction ? 'production' : 'development'} mode on port ${PORT}`);
 });

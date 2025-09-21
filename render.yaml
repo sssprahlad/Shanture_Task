@@ -1,0 +1,18 @@
+databases:
+  - name: shanture-db
+    databaseName: shanture
+    user: shanture_user
+    plan: free
+
+services:
+  - type: web
+    name: shanture-app
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    plan: free
