@@ -457,7 +457,7 @@ const Dashboard = () => {
         message: 'Dashboard updated successfully!',
         type: 'success'
       });
-    }, 1500);
+    }, 1000);
   };
 
   const generateReport = () => {
