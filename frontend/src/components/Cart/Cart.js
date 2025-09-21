@@ -147,9 +147,20 @@ const Cart = () => {
     
 
     const calculateTotal = () => {
-        return cart?.items?.reduce((total, item) => {
-            return total + (item.product?.price || 0) * item.quantity;
-        }, 0).toFixed(2);
+        if (!cart?.items || cart.items.length === 0) return '0.00';
+        
+        const total = cart.items.reduce((sum, item) => {
+            const itemPrice = item.price || item.product?.price || 0;
+            const itemQuantity = item.quantity || 1;
+            return sum + (itemPrice * itemQuantity);
+        }, 0);
+        
+        return total.toFixed(2);
+    };
+    
+    const calculateItemsCount = () => {
+        if (!cart?.items) return 0;
+        return cart.items.reduce((count, item) => count + (item.quantity || 1), 0);
     };
 
     if (loading) {
@@ -163,8 +174,12 @@ const Cart = () => {
 
     if(cart?.items?.length === 0){
         return (
-            <div className="empty-cart">
-                <p>Your cart is empty</p>
+            <div className="cart-container">
+                <h2>Your Shopping Cart</h2>
+                <div className="cart-summary">
+                    <span className="items-count">{calculateItemsCount()} {calculateItemsCount() === 1 ? 'item' : 'items'}</span>
+                    <span className="total-amount">Total: ${calculateTotal()}</span>
+                </div>
             </div>
         );
     }
@@ -173,7 +188,7 @@ const Cart = () => {
         return <div className="error-message">{error}</div>;
     }
 
-        if (cart?.items?.length === 0) {
+    if (cart?.items?.length === 0) {
         return (
             <div className="empty-cart">
               {cart?.items?.map(item => (
@@ -206,6 +221,23 @@ const Cart = () => {
                   </div>
                 </div>
               ))}
+              
+              <div className="cart-summary-section">
+                <div className="summary-row">
+                  <span>Total Items:</span>
+                  <span>{cart?.totalQuantity || 0}</span>
+                </div>
+                <div className="summary-row total">
+                  <span>Total Amount:</span>
+                  <span>${(cart?.totalAmount || 0).toFixed(2)}</span>
+                </div>
+                <button 
+                  className="checkout-btn"
+                  onClick={handleCheckout}
+                >
+                  Proceed to Checkout
+                </button>
+              </div>
             </div>
         );
     }
@@ -250,25 +282,41 @@ const Cart = () => {
 
                 <div className="cart-summary">
                     <h3>Order Summary</h3>
-                    {/* <div className="summary-row">
-                        <span>Subtotal</span>
-                        <span>${calculateTotal()}</span>
-                    </div> */}
-                    <div className="summary-row">
-                        <span>Shipping</span>
-                        <span>Free</span>
-                    </div>
-                    <div className="summary-row total">
-                        <span>Total</span>
-                        <span>${cart?.total}</span>
-                    </div>
-                    <button className="checkout-btn" onClick={handleCheckout}>
+                    
+                    <div className="summary-details">
+                        <div className="summary-row">
+                            <span>Subtotal</span>
+                            <span>${(cart?.totalAmount || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="summary-row">
+                            <span>Shipping</span>
+                            <span className="free-shipping">Free</span>
+                        </div>
+                        <div className="summary-row">
+                            <span>Total Items</span>
+                            <span>{cart?.totalQuantity || 0}</span>
+                        </div>
+                        <div className="summary-divider"></div>
+                        <div className="summary-total">
+                            <span>Total</span>
+                            <span>${(cart?.totalAmount || 0).toFixed(2)}</span>
+                        </div>
+                         <button className="checkout-btn" onClick={handleCheckout}>
                         Proceed to Checkout
                     </button>
-                    {/* <Link to="/" className="continue-shopping-link">
+                    </div>
+                    
+                    {/* <button className="checkout-btn" onClick={handleCheckout}>
+                        Proceed to Checkout
+                    </button> */}
+                    {/* <Link to="/products" className="continue-shopping-link">
                         Continue Shopping
                     </Link> */}
+                     {/* <button className="checkout-btn" onClick={handleCheckout}>
+                        Proceed to Checkout
+                    </button> */}
                 </div>
+                  
             </div>
         </div>
     );

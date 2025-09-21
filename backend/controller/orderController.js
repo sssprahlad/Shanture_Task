@@ -216,6 +216,7 @@ exports.getCart = async (req, res) => {
     try {
         const db = await getDbConnection();
         
+        // Get cart items with product details
         const cartItems = await db.all(
             `SELECT c.id as cart_id, p.*, c.quantity 
              FROM Cart c 
@@ -224,10 +225,45 @@ exports.getCart = async (req, res) => {
             [customer_id]
         );
         
-        console.log('Fetched cart items:', cartItems);
+        // Calculate total quantity and price
+        let totalQuantity = 0;
+        let subtotal = 0;
+        
+        const itemsWithTotals = cartItems.map(item => {
+            const itemTotal = (item.price || 0) * (item.quantity || 1);
+            totalQuantity += item.quantity || 0;
+            subtotal += itemTotal;
+            
+            return {
+                ...item,
+                item_total: parseFloat(itemTotal.toFixed(2))
+            };
+        });
+        
+        // Calculate tax (example: 10% tax rate)
+        const taxRate = 0.10;
+        const tax = parseFloat((subtotal * taxRate).toFixed(2));
+        const total = parseFloat((subtotal + tax).toFixed(2));
+        
+        console.log('Fetched cart items:', itemsWithTotals.length, 'items found');
+        
         return res.status(200).json({ 
             success: true,
-            items: cartItems || []
+            items: itemsWithTotals,
+            totalQuantity: totalQuantity,
+            totalAmount: parseFloat(subtotal.toFixed(2)),
+            summary: {
+                total_quantity: totalQuantity,
+                subtotal: parseFloat(subtotal.toFixed(2)),
+                tax: tax,
+                tax_rate: taxRate * 100, // as percentage
+                total: total,
+                currency: 'USD'
+            },
+            metadata: {
+                item_count: itemsWithTotals.length,
+                last_updated: new Date().toISOString()
+            }
         });
         
     } catch (error) {
@@ -235,7 +271,8 @@ exports.getCart = async (req, res) => {
         return res.status(500).json({ 
             success: false,
             error: 'Failed to fetch cart',
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+            timestamp: new Date().toISOString()
         });
     }
 };
@@ -397,8 +434,13 @@ exports.getOrders = async (req, res) => {
         });
     }
     
+    let db;
     try {
-        const db = require('../config/db');
+        db = await getDbConnection();
+        if (!db) {
+            throw new Error('Failed to connect to database');
+        }
+        
         const customer_id = req.user.id;
         
         // First, get all orders for the customer
@@ -407,7 +449,10 @@ exports.getOrders = async (req, res) => {
              WHERE customer_id = ?
              ORDER BY order_date DESC`,
             [customer_id]
-        );
+        ).catch(err => {
+            console.error('Error fetching orders:', err);
+            throw new Error('Failed to fetch orders');
+        });
 
         if (!orders || orders.length === 0) {
             return res.json([]);
@@ -423,14 +468,21 @@ exports.getOrders = async (req, res) => {
         );
 
         // Then get all order items for these orders
-        const orderItems = await db.all(
-            `SELECT oi.*, p.name as product_name, p.image as product_image
-             FROM OrderItems oi
-             JOIN products p ON oi.product_id = p.id
-             WHERE oi.order_id IN (${placeholders})
-             ${columnCheck ? 'ORDER BY oi.created_at' : ''}`,
-            [...orderIds]
-        );
+        let orderItems = [];
+        if (orderIds.length > 0) {
+            orderItems = await db.all(
+                `SELECT oi.*, p.name as product_name, p.image as product_image
+                 FROM OrderItems oi
+                 JOIN products p ON oi.product_id = p.id
+                 WHERE oi.order_id IN (${placeholders})
+                 ${columnCheck ? 'ORDER BY oi.created_at' : ''}`,
+                [...orderIds]
+            ).catch(err => {
+                console.error('Error fetching order items:', err);
+                // Continue with empty order items if there's an error
+                return [];
+            });
+        }
         
         // Group order items by order_id
         const itemsByOrderId = orderItems.reduce((acc, item) => {
@@ -470,16 +522,19 @@ exports.getOrders = async (req, res) => {
         
         return res.status(200).json({
             success: true,
-            orders: ordersWithTotals
+            orders: ordersWithTotals || []
         });
         
     } catch (error) {
         console.error('Error in getOrders:', error);
         return res.status(500).json({
             success: false,
-            error: 'Failed to fetch orders',
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            error: error.message || 'Failed to fetch orders',
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
+    } finally {
+        // Close the database connection if needed
+        // if (db) await db.close();
     }
 };
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { FaBox, FaCalendarAlt, FaShoppingBag, FaDollarSign, FaCheckCircle } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
+import { API_BASE_URL } from '../../constants/api';
 
 const Orders = () => {
     const [orders, setOrders] = useState([]);
@@ -14,19 +15,57 @@ const Orders = () => {
     useEffect(() => {
         const fetchOrders = async () => {
             const token = localStorage.getItem('token');
+            console.log('Auth Token:', token);
+            
             if (!token) {
                 setError('Please log in to view your orders');
                 setLoading(false);
                 return;
             }
+
             try {
-                const response = await axios.get('http://localhost:8080/api/orders', {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                console.log('Fetching orders from:', `${API_BASE_URL}/orders`);
+                const response = await axios({
+                    method: 'get',
+                    url: `${API_BASE_URL}/orders`,
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    withCredentials: true
                 });
-                setOrders(response.data);
+
+                console.log('Response data:', response.data);
+                
+                // Handle different response formats
+                if (response.data && response.data.orders) {
+                    setOrders(response.data.orders);
+                } else if (Array.isArray(response.data)) {
+                    setOrders(response.data);
+                } else {
+                    console.warn('Unexpected response format:', response.data);
+                    setError('Unexpected response format from server');
+                }
+                
             } catch (error) {
-                console.error('Error fetching orders:', error);
-                setError(error.response?.data?.error || 'Failed to load orders. Please try again later.');
+                console.error('Error details:', {
+                    message: error.message,
+                    response: error.response?.data,
+                    status: error.response?.status,
+                    config: error.config
+                });
+                
+                if (error.response) {
+                    // Server responded with error status
+                    setError(error.response.data?.error || `Error: ${error.response.status}`);
+                } else if (error.request) {
+                    // Request was made but no response
+                    setError('No response from server. Please check your connection.');
+                } else {
+                    // Other errors
+                    setError('Error setting up request: ' + error.message);
+                }
             } finally {
                 setLoading(false);
             }
