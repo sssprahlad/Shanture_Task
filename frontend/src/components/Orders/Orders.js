@@ -19,12 +19,11 @@ const Orders = () => {
                 setLoading(false);
                 return;
             }
-
             try {
                 const response = await axios.get('http://localhost:8080/api/orders', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                setOrders(Array.isArray(response.data) ? response.data : []);
+                setOrders(response.data);
             } catch (error) {
                 console.error('Error fetching orders:', error);
                 setError(error.response?.data?.error || 'Failed to load orders. Please try again later.');
@@ -34,7 +33,7 @@ const Orders = () => {
         };
 
         fetchOrders();
-    }, []); // Empty dependency array means this effect runs once when the component mounts
+    }, []); 
 
     const toggleOrder = (orderId) => {
         setExpandedOrders(prev => ({

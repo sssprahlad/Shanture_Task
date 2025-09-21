@@ -15,7 +15,7 @@ const getDbConnection = async () => {
 exports.addToCart = async (req, res) => {
     const { productId } = req.params;
     const { quantity = 1 } = req.body;
-    const customer_id = req.user?.id; // Get customer ID from authenticated user
+    const customer_id = req.user?.id;
 
     console.log('Adding to cart:', { productId, quantity, customer_id });
     
@@ -28,7 +28,8 @@ exports.addToCart = async (req, res) => {
         });
     }
 
-    if (isNaN(quantity) || quantity < 1) {
+    const parsedQuantity = parseInt(quantity, 10);
+    if (isNaN(parsedQuantity) || parsedQuantity < 1) {
         console.error('Invalid quantity:', quantity);
         return res.status(400).json({ 
             success: false,
@@ -47,72 +48,112 @@ exports.addToCart = async (req, res) => {
     let db;
     try {
         db = await getDbConnection();
+        if (!db) {
+            throw new Error('Failed to connect to database');
+        }
         
         // Start transaction
         await db.run('BEGIN TRANSACTION');
 
-        // Check if product exists
-        const product = await db.get('SELECT * FROM products WHERE id = ?', [productId]);
+        try {
+            // Check if product exists and has sufficient stock
+            const product = await db.get(
+                'SELECT id, stock FROM products WHERE id = ?', 
+                [productId]
+            );
             
-        if (!product) {
-            console.log('Product not found:', productId);
-            await db.run('ROLLBACK');
-            return res.status(404).json({ 
-                success: false,
-                error: 'Product not found' 
+            if (!product) {
+                throw new Error('Product not found');
+            }
+
+            // Check if item already in cart
+            const cartItem = await db.get(
+                'SELECT id, quantity FROM Cart WHERE customer_id = ? AND product_id = ?', 
+                [customer_id, productId]
+            );
+
+            if (cartItem) {
+                // Calculate new quantity
+                const newQuantity = cartItem.quantity + parsedQuantity;
+                
+                // Check stock availability
+                if (product.stock < newQuantity) {
+                    throw new Error(`Only ${product.stock} items available in stock`);
+                }
+
+                // Update existing cart item
+                await db.run(
+                    'UPDATE Cart SET quantity = ?, updated_at = datetime("now") WHERE id = ?',
+                    [newQuantity, cartItem.id]
+                );
+            } else {
+                // Check stock availability for new item
+                if (product.stock < parsedQuantity) {
+                    throw new Error(`Only ${product.stock} items available in stock`);
+                }
+
+                // Add new item to cart
+                const cartItemId = uuidv4();
+                await db.run(
+                    `INSERT INTO Cart (id, customer_id, product_id, quantity, created_at)
+                     VALUES (?, ?, ?, ?, datetime('now'))`,
+                    [cartItemId, customer_id, productId, parsedQuantity]
+                );
+            }
+
+            // Commit transaction
+            await db.run('COMMIT');
+
+            // Get updated cart
+            const updatedCart = await db.all(
+                `SELECT c.id, c.product_id, p.name, p.price, c.quantity, p.image 
+                 FROM Cart c 
+                 JOIN products p ON c.product_id = p.id 
+                 WHERE c.customer_id = ?`,
+                [customer_id]
+            );
+
+            return res.status(200).json({
+                success: true,
+                message: 'Item added to cart successfully',
+                cart: updatedCart
             });
+
+        } catch (error) {
+            // Rollback transaction on error
+            await db.run('ROLLBACK');
+            console.error('Error in addToCart transaction:', error.message);
+            
+            if (error.message.includes('available in stock')) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Insufficient stock',
+                    details: error.message
+                });
+            }
+            
+            throw error; // This will be caught by the outer catch block
         }
-
-        // Check if item already in cart
-        const cartItem = await db.get(
-            'SELECT * FROM Cart WHERE customer_id = ? AND product_id = ?', 
-            [customer_id, productId]
-        );
-
-        if (cartItem) {
-            // Update existing cart item
-            await db.run(
-                'UPDATE Cart SET quantity = quantity + ?, updated_at = datetime("now") WHERE id = ?',
-                [quantity, cartItem.id]
-            );
-        } else {
-            // Add new item to cart
-            const cartItemId = uuidv4();
-            await db.run(
-                `INSERT INTO Cart (id, customer_id, product_id, quantity, created_at)
-                 VALUES (?, ?, ?, ?, datetime('now'))`,
-                [cartItemId, customer_id, productId, quantity]
-            );
-        }
-        await db.run('COMMIT');
-
-        // Get updated cart
-        const updatedCart = await db.all(
-            `SELECT c.id, c.product_id, p.name, p.price, c.quantity, p.image 
-             FROM Cart c 
-             JOIN products p ON c.product_id = p.id 
-             WHERE c.customer_id = ?`,
-            [customer_id]
-        );
-
-        return res.status(200).json({
-            success: true,
-            message: 'Item added to cart',
-            cart: updatedCart || []
-        });
 
     } catch (error) {
         console.error('Error in addToCart:', error);
+        const statusCode = error.message.includes('not found') ? 404 : 500;
+        
+        // Try to rollback if there was a database error
         try {
             if (db) await db.run('ROLLBACK');
         } catch (rollbackError) {
             console.error('Error rolling back transaction:', rollbackError);
         }
-        return res.status(500).json({
+        
+        return res.status(statusCode).json({
             success: false,
-            error: 'Failed to update cart',
+            error: error.message || 'Failed to add item to cart',
             details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
+    } finally {
+        // Close the database connection if needed
+        // if (db) await db.close();
     }
 };
 
@@ -313,9 +354,16 @@ exports.getOrders = async (req, res) => {
             details: 'No user ID found in request'
         });
     }
-    const customer_id = req.user.id;
     
+    let db;
     try {
+        db = await getDbConnection();
+        if (!db) {
+            throw new Error('Failed to connect to database');
+        }
+        
+        const customer_id = req.user.id;
+        
         // First, get all orders for the customer
         const orders = await db.all(
             `SELECT * FROM Orders 
@@ -364,35 +412,54 @@ exports.getOrders = async (req, res) => {
             return acc;
         }, {});
         
-        // Combine orders with their items
-        const ordersWithItems = orders.map(order => ({
-            ...order,
-            items: itemsByOrderId[order.id] || [],
-            // Format date for display
-            formatted_date: new Date(order.order_date).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            })
-        }));
+        // Calculate total amount for each order if not present
+        const ordersWithTotals = orders.map(order => {
+            const orderItems = itemsByOrderId[order.id] || [];
+            const totalAmount = orderItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+            
+            return {
+                ...order,
+                total_amount: order.total_amount || totalAmount,
+                items: orderItems,
+                formatted_date: new Date(order.order_date).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                })
+            };
+        });
         
-        res.json(ordersWithItems);
+        return res.status(200).json({
+            success: true,
+            orders: ordersWithTotals
+        });
         
     } catch (error) {
         console.error('Error in getOrders:', error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             error: 'Failed to fetch orders',
-            details: error.message
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
+    } finally {
+        // Close the database connection if it exists
+        if (db) {
+            try {
+                await db.close();
+            } catch (closeError) {
+                console.error('Error closing database connection:', closeError);
+            }
+        }
     }
 };
 
 // Create a new order from cart
-exports.createOrder = (req, res) => {
+exports.createOrder = async (req, res) => {
+    const db = require('../config/db');
     const customer_id = req.user?.id;
+    
     if (!customer_id) {
         return res.status(401).json({
             success: false,
@@ -401,12 +468,11 @@ exports.createOrder = (req, res) => {
         });
     }
     
-    const order_id = uuidv4();
-    const order_date = new Date().toISOString();
-    const { items } = req.body;
+    const orderId = uuidv4();
+    const orderDate = new Date().toISOString();
+    const { items, shippingAddress, paymentMethod } = req.body;
     
     console.log('Creating new order for customer:', customer_id);
-    console.log('Received items for order:', JSON.stringify(items, null, 2));
     
     // Validate request
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -421,152 +487,133 @@ exports.createOrder = (req, res) => {
     const cartItems = items.map(item => ({
         product_id: item.product_id || item.id,
         quantity: parseInt(item.quantity) || 1,
-        price: parseFloat(item.price) || 0
+        price: parseFloat(item.price) || 0,
+        name: item.name || 'Unnamed Product'
     }));
     
-    console.log('Processed cart items:', JSON.stringify(cartItems, null, 2));
+    // Validate cart items
+    const invalidItems = cartItems.filter(item => !(
+        item.product_id && 
+        item.quantity > 0 && 
+        item.price >= 0
+    ));
     
-    // Start transaction
-    db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
+    if (invalidItems.length > 0) {
+        console.error('Invalid cart items found:', JSON.stringify(invalidItems, null, 2));
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid cart items data',
+            details: {
+                message: 'Some items are missing required fields or have invalid values',
+                invalidItems,
+                requiredFields: ['product_id (string)', 'quantity (number > 0)', 'price (number >= 0)']
+            }
+        });
+    }
+    
+    try {
+        // Check if tables exist, create them if they don't
+        await db.run(`
+            CREATE TABLE IF NOT EXISTS Orders (
+                id TEXT PRIMARY KEY,
+                customer_id TEXT NOT NULL,
+                order_date TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                total REAL NOT NULL,
+                shipping_address TEXT,
+                payment_method TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (customer_id) REFERENCES customers(id)
+            )
+        `);
         
-        // Validate cart items with detailed error logging
-        const invalidItems = cartItems.filter(item => !(
-            item.product_id && 
-            item.quantity > 0 && 
-            item.price > 0
-        ));
+        await db.run(`
+            CREATE TABLE IF NOT EXISTS OrderItems (
+                id TEXT PRIMARY KEY,
+                order_id TEXT NOT NULL,
+                product_id TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                price REAL NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (order_id) REFERENCES Orders(id),
+                FOREIGN KEY (product_id) REFERENCES products(id)
+            )
+        `);
         
-        if (invalidItems.length > 0) {
-            console.error('Invalid cart items found:', JSON.stringify(invalidItems, null, 2));
-            return db.run('ROLLBACK', () => {
-                res.status(400).json({
-                    success: false,
-                    error: 'Invalid cart items data',
-                    details: {
-                        message: 'Some items are missing required fields or have invalid values',
-                        invalidItems: invalidItems,
-                        requiredFields: ['product_id (string)', 'quantity (number > 0)', 'price (number > 0)']
-                    }
-                });
+        // Calculate total amount
+        const totalAmount = cartItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+        
+        // Start transaction
+        await db.run('BEGIN TRANSACTION');
+        
+        try {
+            // Create order
+            await db.run(
+                `INSERT INTO Orders (id, customer_id, order_date, status, total, shipping_address, payment_method)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [orderId, customer_id, orderDate, 'pending', totalAmount, JSON.stringify(shippingAddress), paymentMethod]
+            );
+            
+            // Insert order items and update product stock
+            for (const item of cartItems) {
+                // Insert order item
+                await db.run(
+                    'INSERT INTO OrderItems (id, order_id, product_id, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                    [uuidv4(), orderId, item.product_id, item.quantity, item.price]
+                );
+                
+                // Update product stock
+                await db.run(
+                    'UPDATE products SET stock = stock - ? WHERE id = ?',
+                    [item.quantity, item.product_id]
+                );
+            }
+            
+            // Clear the cart
+            await db.run('DELETE FROM Cart WHERE customer_id = ?', [customer_id]);
+            
+            // Commit the transaction
+            await db.run('COMMIT');
+            
+            // Get the complete order details
+            const order = await db.get(
+                `SELECT * FROM Orders WHERE id = ?`,
+                [orderId]
+            );
+            
+            const orderItems = await db.all(
+                `SELECT oi.*, p.name, p.image, (oi.quantity * oi.price) as item_total
+                 FROM OrderItems oi
+                 JOIN products p ON oi.product_id = p.id
+                 WHERE oi.order_id = ?`,
+                [orderId]
+            );
+            
+            return res.status(201).json({
+                success: true,
+                message: 'Order created successfully',
+                order: {
+                    ...order,
+                    items: orderItems,
+                    shipping_address: shippingAddress ? JSON.parse(order.shipping_address) : null
+                }
             });
+            
+        } catch (error) {
+            console.error('Error in createOrder transaction:', error);
+            await db.run('ROLLBACK');
+            throw error;
         }
         
-        // 1. Create order
-        db.run(
-            'INSERT INTO Orders (id, customer_id, order_date, status, total) VALUES (?, ?, ?, ?, ?)',
-            [order_id, customer_id, order_date, 'pending', 0],
-            function(err) {
-                if (err) {
-                    console.error('Error creating order:', err);
-                    return db.run('ROLLBACK', () => {
-                        res.status(500).json({
-                            success: false,
-                            error: 'Failed to create order',
-                            details: err.message
-                        });
-                    });
-                }
-                
-                let total = 0;
-                let itemsProcessed = 0;
-                
-                // Handle case where there are no items (shouldn't happen due to earlier validation)
-                if (cartItems.length === 0) {
-                    return db.run('ROLLBACK', () => {
-                        res.status(400).json({
-                            success: false,
-                            error: 'No items in cart'
-                        });
-                    });
-                }
-                
-                // 2. Add order items
-                cartItems.forEach((item) => {
-                    const itemTotal = item.price * item.quantity;
-                    total += itemTotal;
-                    
-                    db.run(
-                        'INSERT INTO OrderItems (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)',
-                        [order_id, item.product_id, item.quantity, item.price],
-                        function(err) {
-                            if (err) {
-                                console.error('Error adding order item:', err);
-                                return db.run('ROLLBACK', () => {
-                                    res.status(500).json({
-                                        success: false,
-                                        error: 'Failed to add order item',
-                                        details: err.message
-                                    });
-                                });
-                            }
-                            
-                            itemsProcessed++;
-                            
-                            // When all items are processed
-                            if (itemsProcessed === cartItems.length) {
-                                // 3. Update order total
-                                db.run(
-                                    'UPDATE Orders SET total = ? WHERE id = ?',
-                                    [total, order_id],
-                                    function(err) {
-                                        if (err) {
-                                            console.error('Error updating order total:', err);
-                                            return db.run('ROLLBACK', () => {
-                                                res.status(500).json({
-                                                    success: false,
-                                                    error: 'Failed to update order total',
-                                                    details: err.message
-                                                });
-                                            });
-                                        }
-                                        
-                                        // 4. Clear cart
-                                        db.run(
-                                            'DELETE FROM Cart WHERE customer_id = ?',
-                                            [customer_id],
-                                            function(err) {
-                                                if (err) {
-                                                    console.error('Error clearing cart:', err);
-                                                    return db.run('ROLLBACK', () => {
-                                                        res.status(500).json({
-                                                            success: false,
-                                                            error: 'Failed to clear cart',
-                                                            details: err.message
-                                                        });
-                                                    });
-                                                }
-                                                
-                                                // Commit transaction
-                                                db.run('COMMIT', (commitErr) => {
-                                                    if (commitErr) {
-                                                        console.error('Error committing transaction:', commitErr);
-                                                        return res.status(500).json({
-                                                            success: false,
-                                                            error: 'Failed to complete order',
-                                                            details: commitErr.message
-                                                        });
-                                                    }
-
-                                                    console.log('Order created successfully:', order_id);
-                                                    res.status(201).json({
-                                                        success: true,
-                                                        message: 'Order created successfully',
-                                                        order_id,
-                                                        total: parseFloat(total.toFixed(2))
-                                                    });
-                                                });
-                                            }
-                                        );
-                                    }
-                                );
-                            }
-                        }
-                    );
-                });
-            }
-        );
-    });
+    } catch (error) {
+        console.error('Error in createOrder:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Failed to create order',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
 };
 
 // Delete an order

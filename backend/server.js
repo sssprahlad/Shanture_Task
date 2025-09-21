@@ -39,11 +39,13 @@ app.use((req, res, next) => {
 const customerRoutes = require('./routes/customerRoutes');
 const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/ordersRouter');
+const cartRoutes = require('./routes/cartRouter');
 
 // Use routes
-app.use('/api', customerRoutes);
-app.use('/api', productRoutes);
-app.use('/api', orderRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/cart', cartRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend server is running!");

@@ -22,7 +22,11 @@ const Login = () => {
     setError('');
     
     try {
-      const response = await axios.post('http://localhost:8080/api/login', formData);
+      const response = await axios.post('http://localhost:8080/api/customers/login', formData, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
       
       if (response.data.success) {
         localStorage.setItem('token', response.data.data.token);
